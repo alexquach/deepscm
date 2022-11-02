@@ -46,6 +46,8 @@ class Conv2dIndepNormal(_DeepIndepNormal):
     def __init__(self, backbone: nn.Module, hidden_channels: int, out_channels: int = 1):
         super().__init__(
             backbone=backbone,
+            # mean_head=nn.Linear(hidden_channels, out_channels),
+            # logvar_head=nn.Linear(hidden_channels, out_channels)
             mean_head=nn.Conv2d(hidden_channels, out_channels=out_channels, kernel_size=1),
             logvar_head=nn.Conv2d(hidden_channels, out_channels=out_channels, kernel_size=1)
         )

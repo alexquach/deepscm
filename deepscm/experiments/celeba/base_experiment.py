@@ -377,6 +377,13 @@ class BaseCovariateExperiment(pl.LightningModule):
         grid = torchvision.utils.make_grid(imgs, normalize=normalize, **kwargs)
         self.logger.experiment.add_image(tag, grid, self.current_epoch)
 
+    def log_embedding(self, tag, imgs, normalize=True, save_img=False, **kwargs):
+        if save_img:
+            p = os.path.join(self.trainer.logger.experiment.log_dir, f'{tag}.npy')
+            np.save(p, imgs.cpu())
+        # grid = torchvision.utils.make_grid(imgs, normalize=normalize, **kwargs)
+        # self.logger.experiment.add_image(tag, grid, self.current_epoch)
+
     def get_batch(self, loader):
         batch = next(iter(self.val_loader))
         if self.trainer.on_gpu:
@@ -456,6 +463,7 @@ class BaseCovariateExperiment(pl.LightningModule):
             #     sampled_kdes[name] = {'brain_volume': sampled_brain_volume, 'ventricle_volume': sampled_ventricle_volume}
 
         self.log_img_grid(tag, torch.cat(imgs, 0))
+        self.log_embedding(tag, torch.cat(imgs, 0), save_img=True)
         self.log_kdes(f'{tag}_sampled', sampled_kdes, save_img=True)
 
     def sample_images(self):
@@ -495,6 +503,7 @@ class BaseCovariateExperiment(pl.LightningModule):
             obs_batch = {k: v[:8] for k, v in obs_batch.items()}
 
             self.log_img_grid('input', obs_batch['x'], save_img=True)
+            self.log_embedding('input', obs_batch['x'], save_img=True)
 
             if hasattr(self.pyro_model, 'reconstruct'):
                 self.build_reconstruction(**obs_batch)
@@ -509,8 +518,13 @@ class BaseCovariateExperiment(pl.LightningModule):
             conditions = {
                 '0': {'sex': torch.zeros_like(obs_batch['sex'])},
                 '1': {'sex': torch.ones_like(obs_batch['sex'])},
+                '2': {'facial_hair': torch.zeros_like(obs_batch['facial_hair'])},
+                '3': {'facial_hair': torch.ones_like(obs_batch['facial_hair'])},
+                '4': {'facial_hair': torch.ones_like(obs_batch['facial_hair']) * 2},
+                '5': {'facial_hair': torch.ones_like(obs_batch['facial_hair']) * 3},
+                '6': {'facial_hair': torch.ones_like(obs_batch['facial_hair']) * 4},
             }
-            self.build_counterfactual('do(sex=x)', obs=obs_batch, conditions=conditions)
+            self.build_counterfactual('do(sex=x, facial_hair=x)', obs=obs_batch, conditions=conditions)
 
             # conditions = {
             #     '800000': {'brain_volume': torch.zeros_like(obs_batch['brain_volume']) + 800000},

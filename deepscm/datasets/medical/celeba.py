@@ -22,7 +22,7 @@ class CelebaEmbedDataset(Dataset):
 
 
     def __len__(self):
-        return self.num_items
+        return self.num_items -1 
 
 
     def __getitem__(self, index):

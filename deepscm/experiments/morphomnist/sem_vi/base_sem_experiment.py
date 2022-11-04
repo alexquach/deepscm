@@ -379,6 +379,7 @@ class SVIExperiment(BaseCovariateExperiment):
         loss = self.svi.step(**batch)
 
         metrics = self.get_trace_metrics(batch)
+        print(metrics)
 
         if np.isnan(loss):
             self.logger.experiment.add_text('nan', f'nand at {self.current_epoch}:\n{metrics}')

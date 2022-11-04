@@ -18,7 +18,7 @@ class CelebaEmbedDataset(Dataset):
         df = pd.read_csv(csv_path).drop(columns=['image_id'])
         self.metrics = {col: torch.as_tensor(df[col]).float() for col in df.columns}
 
-        self.num_items = len(npy_path)
+        self.num_items = len(self.embed)
 
 
     def __len__(self):

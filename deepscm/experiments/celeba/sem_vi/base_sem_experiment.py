@@ -142,6 +142,9 @@ class BaseVISEM(BaseSEM):
         self.register_buffer('facial_hair_base_loc', torch.zeros([1, ], requires_grad=False))
         self.register_buffer('facial_hair_base_scale', torch.ones([1, ], requires_grad=False))
 
+        self.register_buffer('embedding_base_loc', torch.zeros([384, ], requires_grad=False))
+        self.register_buffer('embedding_base_scale', torch.ones([384, ], requires_grad=False))
+
         self.register_buffer('ventricle_volume_base_loc', torch.zeros([1, ], requires_grad=False))
         self.register_buffer('ventricle_volume_base_scale', torch.ones([1, ], requires_grad=False))
 
@@ -171,7 +174,12 @@ class BaseVISEM(BaseSEM):
 
 
         self.facial_hair_flow = AffineTransform(loc=self.facial_hair_base_loc.item(), scale=self.facial_hair_base_scale.item())
-        self.facial_hair_flow_constraint_transforms = ComposeTransform([self.facial_hair_flow, ExpTransform()])
+        # self.facial_hair_flow_constraint_transforms = ComposeTransform([self.facial_hair_flow, ExpTransform()])
+        self.facial_hair_flow_constraint_transforms = ComposeTransform([self.facial_hair_flow])
+
+        self.embedding_flow = AffineTransform(loc=self.embedding_base_loc.cuda(), scale=self.embedding_base_scale.cuda())
+        # self.embedding_flow_constraint_transforms = ComposeTransform([self.embedding_flow, ExpTransform()])
+        self.embedding_flow_constraint_transforms = ComposeTransform([self.embedding_flow])
 
         # other flows shared components
         self.ventricle_volume_flow_lognorm = AffineTransform(loc=self.ventricle_volume_flow_lognorm_loc.item(), scale=self.ventricle_volume_flow_lognorm_scale.item())  # noqa: E501
@@ -239,10 +247,10 @@ class BaseVISEM(BaseSEM):
         _required_data = ('x', 'sex', 'facial_hair')
         assert set(obs.keys()) == set(_required_data), 'got: {}'.format(tuple(obs.keys()))
 
-        z = self.infer_z(**obs)
+        # z = self.infer_z(**obs)
 
-        exogeneous = self.infer_exogeneous(z=z, **obs)
-        exogeneous['z'] = z
+        exogeneous = self.infer_exogeneous(**obs)
+        # exogeneous['z'] = z
 
         return exogeneous
 
@@ -278,7 +286,7 @@ class BaseVISEM(BaseSEM):
 
             counter = pyro.poutine.do(pyro.poutine.condition(self.sample_scm, data=exogeneous), data=condition)(obs['x'].shape[0])
             counterfactuals += [counter]
-        return {k: v for k, v in zip(('x', 'z', 'sex', 'facial_hair'), (torch.stack(c).mean(0) for c in zip(*counterfactuals)))}
+        return {k: v for k, v in zip(('x', 'sex', 'facial_hair'), (torch.stack(c).mean(0) for c in zip(*counterfactuals)))}
 
     @classmethod
     def add_arguments(cls, parser):
@@ -388,9 +396,9 @@ class SVIExperiment(BaseCovariateExperiment):
         metrics['log p(facial_hair)'] = model.nodes['facial_hair']['log_prob'].mean()
         # metrics['log p(ventricle_volume)'] = model.nodes['ventricle_volume']['log_prob'].mean()
         # metrics['log p(brain_volume)'] = model.nodes['brain_volume']['log_prob'].mean()
-        metrics['p(z)'] = model.nodes['z']['log_prob'].mean()
-        metrics['q(z)'] = guide.nodes['z']['log_prob'].mean()
-        metrics['log p(z) - log q(z)'] = metrics['p(z)'] - metrics['q(z)']
+        # metrics['p(z)'] = model.nodes['z']['log_prob'].mean()
+        # metrics['q(z)'] = guide.nodes['z']['log_prob'].mean()
+        # metrics['log p(z) - log q(z)'] = metrics['p(z)'] - metrics['q(z)']
 
         return metrics
 
@@ -422,6 +430,7 @@ class SVIExperiment(BaseCovariateExperiment):
         loss = self.svi.step(**batch)
 
         metrics = self.get_trace_metrics(batch)
+        print(metrics)
 
         if np.isnan(loss):
             self.logger.experiment.add_text('nan', f'nand at {self.current_epoch}:\n{metrics}')

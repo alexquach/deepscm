@@ -21,6 +21,10 @@ class ConditionalVISEM(BaseVISEM):
         self.facial_hair_flow_components = ConditionalAffineTransform(context_nn=facial_hair_net, event_dim=0)
         self.facial_hair_flow_transforms = [self.facial_hair_flow_components, self.facial_hair_flow_constraint_transforms]
 
+        embedding_net = DenseNN(2, [8, 16], param_dims=[1, 1], nonlinearity=torch.nn.LeakyReLU(.1))
+        self.embedding_flow_components = ConditionalAffineTransform(context_nn=embedding_net, event_dim=0)
+        self.embedding_flow_transforms = [self.embedding_flow_components, self.embedding_flow_constraint_transforms]
+
         # # ventricle_volume flow
         # ventricle_volume_net = DenseNN(2, [8, 16], param_dims=[1, 1], nonlinearity=torch.nn.LeakyReLU(.1))
         # self.ventricle_volume_flow_components = ConditionalAffineTransform(context_nn=ventricle_volume_net, event_dim=0)
@@ -78,21 +82,25 @@ class ConditionalVISEM(BaseVISEM):
         # ventricle_volume_ = self.ventricle_volume_flow_constraint_transforms.inv(ventricle_volume)
         # brain_volume_ = self.brain_volume_flow_constraint_transforms.inv(brain_volume)
 
-        z = pyro.sample('z', Normal(self.z_loc, self.z_scale).to_event(1))
+        # z = pyro.sample('z', Normal(self.z_loc, self.z_scale).to_event(1))
 
         # latent = torch.cat([z, ventricle_volume_, brain_volume_], 1)
-        print('z', z.shape)
-        print('sex', sex.shape)
-        print('facial_hair_', facial_hair_.shape)
-        latent = torch.cat([z, sex, facial_hair_], 1)
+        # print('sex', sex)
+        # print('facial_hair', facial_hair)
+        # print('facial_hair_', facial_hair_)
 
-        x_dist = self._get_transformed_x_dist(latent)
+        embedding_context = torch.cat([sex, facial_hair_], 1)
+        embedding_base_dist = Normal(self.embedding_base_loc, self.embedding_base_scale).to_event(1)
+        embedding_dist = ConditionalTransformedDistribution(embedding_base_dist, self.embedding_flow_transforms).condition(embedding_context)
+
+        # x_dist = self._get_transformed_x_dist(latent)
 
         # We want [-1, 384]?
-        x = pyro.sample('x', x_dist.to_event(0))
+        # x = pyro.sample('x', x_dist.to_event(0))
+        x = pyro.sample('x', embedding_dist.to_event(0))
 
         # return x, z, age, sex, ventricle_volume, brain_volume
-        return x, z, sex, facial_hair
+        return x, sex, facial_hair
 
     @pyro_method
     # def guide(self, x, age, sex, ventricle_volume, brain_volume):

@@ -188,6 +188,8 @@ class BaseCovariateExperiment(pl.LightningModule):
 
         self.pyro_model.facial_hair_flow_loc = (self.celeba_train.metrics['Facial_Hair'].mean().to(self.torch_device).float())
         self.pyro_model.facial_hair_flow_scale = (self.celeba_train.metrics['Facial_Hair'].std().to(self.torch_device).float())
+        # self.pyro_model.embedding_flow_loc = (self.celeba_train.metrics['embed'].mean().to(self.torch_device).float())
+        # self.pyro_model.embedding_flow_scale = (self.celeba_train.metrics['embed'].std().to(self.torch_device).float())
         facial_hairs = 0. + 1 * torch.arange(3, dtype=torch.float, device=self.torch_device)
         self.facial_hair_range = facial_hairs.repeat_interleave(3).unsqueeze(1)
 

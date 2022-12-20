@@ -178,8 +178,8 @@ class BaseVISEM(BaseSEM):
         self.facial_hair_flow_constraint_transforms = ComposeTransform([self.facial_hair_flow])
 
         self.embedding_flow = AffineTransform(loc=self.embedding_base_loc.cuda(), scale=self.embedding_base_scale.cuda())
-        # self.embedding_flow_constraint_transforms = ComposeTransform([self.embedding_flow, ExpTransform()])
-        self.embedding_flow_constraint_transforms = ComposeTransform([self.embedding_flow])
+        self.embedding_flow_constraint_transforms = ComposeTransform([self.embedding_flow, ExpTransform()])
+        # self.embedding_flow_constraint_transforms = ComposeTransform([self.embedding_flow])
 
         # other flows shared components
         self.ventricle_volume_flow_lognorm = AffineTransform(loc=self.ventricle_volume_flow_lognorm_loc.item(), scale=self.ventricle_volume_flow_lognorm_scale.item())  # noqa: E501

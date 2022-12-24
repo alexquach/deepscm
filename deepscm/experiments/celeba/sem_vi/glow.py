@@ -136,11 +136,11 @@ class InvConv2dLU(nn.Module):
     def reverse(self, output):
         weight = self.calc_weight()
 
-        return F.conv2d(output, weight.squeeze().inverse().unsqueeze(2).unsqueeze(3))
+        return F.conv2d(output.unsqueeze(2).unsqueeze(3), weight.squeeze().inverse().unsqueeze(2).unsqueeze(3))
 
 
 class ZeroConv2d(nn.Module):
-    def __init__(self, in_channel, out_channel, padding=1):
+    def __init__(self, in_channel, out_channel, padding=1, convert_to_4d=False):
         super().__init__()
         # print(f"Creating zeroconv: {in_channel}")
 
@@ -148,9 +148,12 @@ class ZeroConv2d(nn.Module):
         self.conv.weight.data.zero_()
         self.conv.bias.data.zero_()
         self.scale = nn.Parameter(torch.zeros(1, out_channel, 1, 1))
+        self.convert_to_4d = convert_to_4d
 
     def forward(self, input):
         # out = F.pad(input, [1, 1, 1, 1], value=1)
+        if self.convert_to_4d:
+            input = input.unsqueeze(2).unsqueeze(3)
         out = self.conv(input)
         out = out * torch.exp(self.scale * 3)
 
@@ -170,13 +173,26 @@ class AffineCoupling(nn.Module):
         # 384 => 384 => 384
         # 384 => 512 => 384
 
+        # self.net = nn.Sequential(
+        #     nn.Conv2d(in_channel // 2, filter_size, kernel_size=1, padding=0),
+        #     nn.ReLU(inplace=True),
+        #     nn.Conv2d(filter_size, filter_size, 1),
+        #     nn.ReLU(inplace=True),
+        #     ZeroConv2d(filter_size, in_channel if self.affine else in_channel // 2),
+        # )
+
+        
+        hidden_size = filter_size
         self.net = nn.Sequential(
-            nn.Conv2d(in_channel // 2, filter_size, kernel_size=1, padding=0),
+            nn.Linear(in_channel // 2, hidden_size),
             nn.ReLU(inplace=True),
-            nn.Conv2d(filter_size, filter_size, 1),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(inplace=True),
-            ZeroConv2d(filter_size, in_channel if self.affine else in_channel // 2),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(inplace=True),
+            ZeroConv2d(filter_size, in_channel if self.affine else in_channel // 2, convert_to_4d=True),
         )
+
 
         self.net[0].weight.data.normal_(0, 0.05)
         self.net[0].bias.data.zero_()
@@ -188,7 +204,7 @@ class AffineCoupling(nn.Module):
         in_a, in_b = input.chunk(2, 1)
 
         if self.affine:
-            log_s, t = self.net(in_a).chunk(2, 1)
+            log_s, t = self.net(in_a.squeeze()).chunk(2, 1)
             # s = torch.exp(log_s)
             s = F.sigmoid(log_s + 2)
             # out_a = s * in_a + t
@@ -204,10 +220,16 @@ class AffineCoupling(nn.Module):
         return torch.cat([in_a, out_b], 1), logdet
 
     def reverse(self, output):
+        output = output.squeeze()
         out_a, out_b = output.chunk(2, 1)
 
         if self.affine:
             log_s, t = self.net(out_a).chunk(2, 1)
+
+            z_dim = out_a.shape[1]
+            log_s = log_s.reshape(-1, z_dim)
+            t = t.reshape(-1, z_dim)
+
             # s = torch.exp(log_s)
             s = F.sigmoid(log_s + 2)
             # in_a = (out_a - t) / s
@@ -265,6 +287,7 @@ def gaussian_sample(eps, mean, log_sd):
 class Block(nn.Module):
     def __init__(self, in_channel, n_flow, split=True, affine=True, conv_lu=True):
         super().__init__()
+        print("Creating block")
 
         # squeeze_dim = in_channel * 4
 
@@ -357,7 +380,7 @@ class Glow(nn.Module):
         n_channel = in_channel
         for i in range(n_block - 1):
             self.blocks.append(Block(n_channel, n_flow, affine=affine, conv_lu=conv_lu))
-            # n_channel *= 2
+            n_channel = n_channel // 2
         self.blocks.append(Block(n_channel, n_flow, split=False, affine=affine))
 
     def forward(self, input):

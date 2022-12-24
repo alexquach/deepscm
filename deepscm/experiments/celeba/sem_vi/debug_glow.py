@@ -11,9 +11,17 @@ from glow import Flow, Glow
 import torch
 from torch import optim
 
-split_dir = "../../../../assets/data/celeba"
+from torch.utils.tensorboard import SummaryWriter
+
+# split_dir = "../../../../assets/data/celeba"
 # split_dir = "assets/data/celeba"
+
+# from /deepscm
 # split_dir = "../../../../../../../../dgx1nas1/storage/data/jcaicedo/dsae/celebA"
+
+# from /sem_vi
+split_dir = "../../../../../../../../../../../../dgx1nas1/storage/data/jcaicedo/dsae/celebA"
+
 # celeba_train = CelebaEmbedDataset(npy_path=, csv_path=f'{split_dir}/train_features.csv')
 embed_train = np.load(f'{split_dir}/train_features.npy')
 embed_valid = np.load(f'{split_dir}/val_features.npy')
@@ -31,44 +39,52 @@ def calc_loss(log_p, logdet, num_features, n_bins):
         (logdet / (log(2) * num_features)).mean(),
     )
 
-def train(dataset, model, optimizer, epochs, lr, device):
-    with tqdm(enumerate(iter(dataset))) as pbar:
-        for i, embed in pbar:
-            # embed = next(dataset)
-            embed = embed.to(device)
-            embed_size = embed.shape[1]
-            embed = embed.reshape(-1, 384, 1, 1)
+def train(dataset, model, optimizer, epochs, lr, device, writer):
+    for epoch in range(epochs):
+        with tqdm(enumerate(iter(dataset))) as pbar:
+            for i, embed in pbar:
+                # embed = next(dataset)
+                embed = embed.to(device)
+                embed_size = embed.shape[1]
+                embed = embed.reshape(-1, 384, 1, 1)
 
-            # dequantization
-            # log_p, logdet, _ = model(image + torch.rand_like(image) / n_bins)
-            log_p, logdet, _ = model(embed)
+                # dequantization
+                # log_p, logdet, _ = model(image + torch.rand_like(image) / n_bins)
+                log_p, logdet, _ = model(embed)
 
-            logdet = logdet.mean()
+                logdet = logdet.mean()
 
-            loss, log_p, log_det = calc_loss(log_p, logdet, 384, 256)
+                loss, log_p, log_det = calc_loss(log_p, logdet, 384, 256)
 
-            model.zero_grad()
-            loss.backward()
-            
-            # warmup_lr = args.lr * min(1, i * batch_size / (50000 * 10))
-            warmup_lr = lr
-            optimizer.param_groups[0]["lr"] = warmup_lr
-            optimizer.step()
+                model.zero_grad()
+                loss.backward()
+                
+                # warmup_lr = args.lr * min(1, i * batch_size / (50000 * 10))
+                warmup_lr = lr
+                optimizer.param_groups[0]["lr"] = warmup_lr
+                optimizer.step()
 
-            pbar.set_description(
-                f"Loss: {loss.item():.5f}; logP: {log_p.item():.5f}; logdet: {log_det.item():.5f}; lr: {warmup_lr:.7f}"
-            )
+                pbar.set_description(
+                    f"E: {epoch}; Loss: {loss.item():.5f}; logP: {log_p.item():.5f}; logdet: {log_det.item():.5f}; lr: {warmup_lr:.7f}"
+                )
+
+                if i % 100 == 0:
+                    writer.add_scalar("Loss/train", loss.item(), i)
+                    writer.add_scalar("logP/train", log_p.item(), i)
+                    writer.add_scalar("logdet/train", log_det.item(), i)
 
 n_flow = 32
-n_block = 1
+n_block = 2
 lr = 1e-4
 epochs = 10
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-is_train = False
-version = "_base"
+is_train = True
+version = f"_linear_{n_flow}_{n_block}_1e-4_{epochs}"
 model_name = "model" + version
+
+writer = SummaryWriter(comment=version)
 
 def generate_embeddings(model, device, dataset, filename):
 
@@ -96,7 +112,7 @@ if is_train:
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    train(train_dataloader, model, optimizer, epochs, lr, device)
+    train(train_dataloader, model, optimizer, epochs, lr, device, writer)
     torch.save(
         model.state_dict(), f"./{model_name}.pt"
     )

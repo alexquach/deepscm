@@ -74,34 +74,59 @@ def train(dataset, model, optimizer, epochs, lr, device, writer):
                     writer.add_scalar("logdet/train", log_det.item(), i)
 
 n_flow = 32
-n_block = 2
+n_block = 3
 lr = 1e-4
-epochs = 10
+epochs = 1
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-is_train = True
+is_train = False
 version = f"_linear_{n_flow}_{n_block}_1e-4_{epochs}"
 model_name = "model" + version
 
 writer = SummaryWriter(comment=version)
 
-def generate_embeddings(model, device, dataset, filename):
+# def generate_embeddings(model, device, dataset, filename):
 
+#     dataloader = DataLoader(dataset, batch_size=64, shuffle=False)
+
+#     model.eval()
+#     with torch.no_grad():
+#         embeds = []
+#         for embed in tqdm(dataloader):
+#             embed = torch.Tensor(embed).to(device)
+#             embed = embed.reshape(-1, 384, 1, 1)
+#             log_p_sum, logdet, z_outs = model(embed)
+#             embeds.append(z_outs[0].cpu().numpy())
+#         embeds = np.concatenate(embeds)
+
+#     # save embeddings
+#     np.save(f"{filename}.npy", embeds)
+
+def generate_forward_embeddings(model, device, dataset, filename):
     dataloader = DataLoader(dataset, batch_size=64, shuffle=False)
 
     model.eval()
     with torch.no_grad():
-        embeds = []
+        embeds_list = [[] for i in range(len(model.blocks))]
         for embed in tqdm(dataloader):
             embed = torch.Tensor(embed).to(device)
-            embed = embed.reshape(-1, 384, 1, 1)
+            embed = embed.unsqueeze(2).unsqueeze(3)
+            # embed = embed.reshape(-1, 384)
             log_p_sum, logdet, z_outs = model(embed)
-            embeds.append(z_outs[0].cpu().numpy())
-        embeds = np.concatenate(embeds)
+            
+            for i in range(len(z_outs)):
+                embeds_list[i].append(z_outs[i].cpu().numpy())
+
+        for i in range(len(embeds_list)):
+            embeds_list[i] = np.concatenate(embeds_list[i])
+        
+        # (19961, 192, 1, 1)
+        embeds_list = np.stack(embeds_list)
+        embeds_list = np.swapaxes(embeds_list, 0, 1)
 
     # save embeddings
-    np.save(f"{filename}.npy", embeds)
+    np.save(f"{filename}.npy", embeds_list)
 
 if is_train:
     train_dataloader = DataLoader(embed_train, batch_size=64, shuffle=True)
@@ -125,5 +150,5 @@ else:
     model.load_state_dict(torch.load(f"./{model_name}.pt"))
 
 
-generate_embeddings(model, device, embed_train, "train_embed" + version)
-generate_embeddings(model, device, embed_valid, "valid_embed" + version)
+generate_forward_embeddings(model, device, embed_valid, "valid_embed" + version)
+generate_forward_embeddings(model, device, embed_train, "train_embed" + version)

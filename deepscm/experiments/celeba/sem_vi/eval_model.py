@@ -22,7 +22,7 @@ df_test = pd.read_csv(f'{split_dir}/test_features.csv')
 
 # Model stuff
 n_flow = 32
-n_block = 1
+n_block = 2
 lr = 1e-4
 epochs = 10
 
@@ -41,16 +41,18 @@ def generate_forward_embeddings(model, device, dataset, filename):
 
     model.eval()
     with torch.no_grad():
-        embeds = []
+        embeds_list = [[] for i in range(len(model.blocks))]
         for embed in tqdm(dataloader):
             embed = torch.Tensor(embed).to(device)
             embed = embed.reshape(-1, 384)
             log_p_sum, logdet, z_outs = model(embed)
-            embeds.append(z_outs[0].cpu().numpy())
-        embeds = np.concatenate(embeds)
+            
+            for i in range(len(z_outs)):
+                embeds_list.append(z_outs[i].cpu().numpy())
+        embeds_list = np.concatenate(embeds_list)
 
     # save embeddings
-    np.save(f"{filename}.npy", embeds)
+    np.save(f"{filename}.npy", embeds_list)
 
 def generate_reverse_embeddings(model, device, dataset, filename=None, reconstruct=True):
     dataloader = DataLoader(dataset, batch_size=64, shuffle=False)
@@ -60,7 +62,7 @@ def generate_reverse_embeddings(model, device, dataset, filename=None, reconstru
         embeds = []
         for z_embed in tqdm(dataloader):
             z_embed = torch.Tensor(z_embed).to(device)
-            z_embed = z_embed.reshape(-1, 384)
+            z_embed = z_embed.unsqueeze(2).unsqueeze(3)
             input = model.reverse([z_embed], reconstruct=reconstruct)
             embeds.append(input.cpu().numpy())
         embeds = np.concatenate(embeds)
@@ -71,12 +73,12 @@ def generate_reverse_embeddings(model, device, dataset, filename=None, reconstru
     return embeds
 
 
-train_z = np.load(f'./train_embed{version}.npy').reshape(-1, 384)
-valid_z = np.load(f'./valid_embed{version}.npy').reshape(-1, 384)
+train_z = np.load(f'./train_embed{version}.npy').squeeze()
+valid_z = np.load(f'./valid_embed{version}.npy').squeeze()
 
 print("Generating reconstruction")
 print(train_z.shape)
-train_recon = generate_reverse_embeddings(model, device, train_z, filename=f"./train_reconstruct_{version}")
+train_recon = generate_reverse_embeddings(model, device, train_z, filename=f"./train_reconstruct{version}")
 train_recon = train_recon.reshape(-1, 384)
 recon_diff_train = train_recon - embed_train
 
